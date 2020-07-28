@@ -26,6 +26,8 @@ class DBField(db_api.DBField):
     name: str
     type: Type
 
+#########################################################
+
 
 @dataclass_json
 @dataclass
@@ -34,7 +36,7 @@ class SelectionCriteria(db_api.SelectionCriteria):
     operator: str
     value: Any
 
-
+#########################################################
 class HashTable:
     table: Dict
 
@@ -59,6 +61,7 @@ class HashTable:
     def delete(self, key: Any, PK: Any):
         self.get(key).remove(PK)
 
+#-------------------------------------------------------#
 
 class PKHashTable(HashTable):
     def insert(self, key: Any, value: Dict[str, Any]):
@@ -68,6 +71,7 @@ class PKHashTable(HashTable):
         cast_to = type(list(self.table.keys())[0])
         del self.table[int(key)]
 
+#########################################################
 
 @dataclass_json
 @dataclass
@@ -141,10 +145,11 @@ class DBTable(db_api.DBTable):
             raise DataBaseError("Key Duplicate")
 
     def valid_values(self, values: Dict[str, Any]) -> None:
-        for field in self.fields:
-            if field.type is not type(values [field.name]):
+        for field in values:
+            if type(values[field]) is not self.fields[self.get_index(field)].type:
                 raise DataBaseError("Field types don't match")
-        self.validate_PK(values)
+        if self.key_field_name in values:
+            self.validate_PK(values)
 
     def dict_to_csv(self, values: Dict[str, Any]) -> List [str]:
         return [values [key.name] for key in self.fields]
@@ -239,7 +244,8 @@ class DBTable(db_api.DBTable):
                      '<=': lambda x, y: x <= y,
                      '>=': lambda x, y: x >= y}
         for i, c in enumerate(criteria):
-            if not operators[c.operator](int(line[indices[i]]), c.value):
+            cast_to = type(c.value)
+            if not operators[c.operator]((cast_to)(line[indices[i]]), c.value):
                 return False
         return True
 
@@ -257,36 +263,46 @@ class DBTable(db_api.DBTable):
                 self.m_count -= num_del
         self.back_up_all_indexes()
 
-    def delete_row(self, block,file,  row_num, criteria):
+    def delete_row(self, block, file,  row_num, criteria):
         indices = [[field.name for field in self.fields].index(c.field_name) for c in criteria]
         num_del = 0
-        while self.line_meets_criterias(block [row_num], indices, criteria):
+        while self.line_meets_criterias(block[row_num], indices, criteria):
             num_del += 1
             new_row, PK = self.get_last_line()
-            self.replace_row(block [row_num], block, file, row_num, new_row)
+            if new_row == block[row_num]:
+                return num_del
+            self.replace_row(block[row_num], block, file, row_num, new_row)
         return num_del
 
     def get_index_of_PK(self):
-        return [field.name for field in self.fields].index(self.key_field_name)
+        return self.get_index(self.key_field_name)
 
-    def get_record(self, key: Any) -> Optional [dict]:
-        for file in self.files:
-            with(DB_ROOT / file).open('r') as f:
-                lis = [line [:-1].split(',') for line in list(f)]
-                for line in lis:
-                    if line [self.get_index_of_PK()] == str(key):
-                        return {field.name: line [i] for i, field in enumerate(self.fields)}
-        return None
+    def get_record(self, key: Any) -> Optional[dict]:
+        file_name, row_num = self.indexing["PK_index"].get(key)
+        with(DB_ROOT / file_name).open('r') as f:
+            block = [line[:-1].split(',') for line in list(f)]
+            return block[row_num]
 
-    def update_record(self, key: Any, values: Dict [str, Any]) -> None:
-        raise NotImplementedError
+    def update_record(self, key: Any, values: Dict[str, Any]) -> None:
+        file_name, row_num = self.indexing["PK_index"].get(key)
+        self.valid_values(values)
+        with(DB_ROOT / file_name).open('r') as f:
+            block = [line[:-1].split(',') for line in list(f)]
+            block[row_num] = self.update_row(block[row_num], values)
 
-    def query_table(self, criteria: List [SelectionCriteria]) -> List [Dict [str, Any]]:
+    def update_row(self, row, values):
+        for field in values:
+            row[self.get_index(field)] = values[field]
+
+    def get_index(self, field):
+        return [field.name for field in self.fields].index(field)
+
+    def query_table(self, criteria: List[SelectionCriteria]) -> List[Dict[str, Any]]:
         indices = [[field.name for field in self.fields].index(c.field_name) for c in criteria]
         result = []
         for file in self.files:
             with(DB_ROOT / file).open('r') as f:
-                lis = [line [:-1].split(',') for line in list(f)]
+                lis = [line[:-1].split(',') for line in list(f)]
                 res = list(filter(lambda line: self.line_meets_criterias(line, indices, criteria), lis))
                 result += list(map(lambda line: {field.name: line [i] for i, field in enumerate(self.fields)}, res))
         return result
@@ -305,6 +321,7 @@ class DBTable(db_api.DBTable):
                 "files": self.files,
                 "m_count": self.m_count}
 
+#########################################################
 
 @dataclass_json
 @dataclass
@@ -325,13 +342,23 @@ class DataBase(db_api.DataBase):
                      table_name: str,
                      fields: List [DBField],
                      key_field_name: str) -> DBTable:
-        # if self.table_exists(table_name):TODO
-        #     raise
+        if self.table_exists(table_name):
+            raise DataBaseError("Table Already Exists")
+        self.validate_PK(key_field_name, fields)
+
         global Tables
         table = DBTable(table_name, fields, key_field_name)
-        Tables [table_name] = table
+        Tables[table_name] = table
         update_meta_data()
         return table
+
+    def table_exists(self, table_name):
+        global Tables
+        return table_name in Tables
+
+    def validate_PK(self, key_field_name, fields):
+        if key_field_name not in [field.name for field in fields]:
+            raise ValueError
 
     def num_tables(self) -> int:
         global Tables

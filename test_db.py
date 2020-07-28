@@ -120,11 +120,10 @@ def test_50_students(new_db: DataBase) -> None:
         SelectionCriteria('ID', '<', 1_000_023)
     ])
     assert students.count() == 28
-    # students.update_record(1_000_009, dict(First='Jane', Last='Doe'))
-    # results = students.query_table([SelectionCriteria('First', '=', 'John3')])
-    # print(results)
-    # assert len(results) == 1
-    # assert results[0]['First'] == 'John3'
+    students.update_record(1_000_009, dict(First='Jane', Last='Doe'))
+    results = students.query_table([SelectionCriteria('First', '=', 'John3')])
+    assert len(results) == 1
+    assert results[0]['First'] == 'John3'
 
 
 def test_performance(new_db: DataBase) -> None:
