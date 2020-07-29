@@ -142,7 +142,7 @@ class DBTable(db_api.DBTable):
     def validate_PK(self, values: Dict[str, Any]) -> None:
         key = values[self.key_field_name]
         if self.indexing['PK_index'].contains(key):
-            raise DataBaseError("Key Duplicate")
+            raise ValueError("Key Duplicate")
 
     def valid_values(self, values: Dict[str, Any]) -> None:
         for field in values:
@@ -281,18 +281,23 @@ class DBTable(db_api.DBTable):
         file_name, row_num = self.indexing["PK_index"].get(key)
         with(DB_ROOT / file_name).open('r') as f:
             block = [line[:-1].split(',') for line in list(f)]
-            return block[row_num]
+        return self.row_2_dict(block[row_num])
 
     def update_record(self, key: Any, values: Dict[str, Any]) -> None:
         file_name, row_num = self.indexing["PK_index"].get(key)
         self.valid_values(values)
         with(DB_ROOT / file_name).open('r') as f:
             block = [line[:-1].split(',') for line in list(f)]
-            block[row_num] = self.update_row(block[row_num], values)
+        block[row_num] = self.update_row(block[row_num], values)
+        with(DB_ROOT / file_name).open('w', newline='') as f:
+            writer = csv.writer(f)
+            writer.writerows(block)
+
 
     def update_row(self, row, values):
         for field in values:
             row[self.get_index(field)] = values[field]
+        return row
 
     def get_index(self, field):
         return [field.name for field in self.fields].index(field)

@@ -84,7 +84,7 @@ def test_create(new_db: DataBase) -> None:
     assert db.num_tables() == 1
     assert db.get_tables_names() == ['Students']
     students = db.get_table('Students')
-    add_student(students, 111, Birthday=dt.datetime(1995, 4, 28))
+    add_student(students, 111) #, Birthday=dt.datetime(1995, 4, 28))
     assert students.count() == 1
     students.delete_record(1_000_111)
     assert students.count() == 0
@@ -99,7 +99,7 @@ def test_create(new_db: DataBase) -> None:
 
 def test_update(new_db: DataBase) -> None:
     students = create_students_table(new_db)
-    add_student(students, 111, Birthday=dt.datetime(1995, 4, 28))
+    add_student(students, 111) #, Birthday=dt.datetime(1995, 4, 28))
     assert students.count() == 1
     students.update_record(1_000_111, dict(First='Jane', Last='Doe'))
     assert students.get_record(1_000_111)['First'] == 'Jane'
